@@ -6,6 +6,7 @@ import {
   LogsPanel,
   PatientInfoModal,
   StatsCard,
+  SummarizeCard,
 } from './components';
 import type {
   SensorData,
@@ -92,6 +93,7 @@ function App() {
   const [patient, ] = useState<PatientInfo | null>(INITIAL_PATIENT);
   const [stats, setStats] = useState<Stats | null>(() => computeStats(INITIAL_LOGS));
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
+  const [isSummarizeOpen, setIsSummarizeOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [scenarios, setScenarios] = useState<Array<{id:string; rows:number}>>([]);
   const [currentScenario, setCurrentScenario] = useState<string | null>(null);
@@ -216,7 +218,7 @@ function App() {
               </div>
               <div>
                 <h1 className="text-lg md:text-xl font-bold text-gray-800">
-                  EMA System
+                  CMA-ViT
                 </h1>
                 <p className="text-xs text-gray-500 hidden sm:block">
                   Human Activity Recognition & Anomaly Detection
@@ -251,6 +253,12 @@ function App() {
                     </button>
                   ))}
                 </div>
+                <button
+                  onClick={() => setIsSummarizeOpen(true)}
+                  className="hidden sm:inline-block px-3 py-1 rounded-md text-sm bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                >
+                  Summarize
+                </button>
                 {currentScenario ? (
                   <button
                     onClick={stopScenario}
@@ -318,9 +326,11 @@ function App() {
         onClose={() => setIsPatientModalOpen(false)}
       />
 
+      <SummarizeCard isOpen={isSummarizeOpen} onClose={() => setIsSummarizeOpen(false)} logs={logs} />
+
       {/* Footer */}
       <footer className="mt-8 py-4 text-center text-xs text-gray-400">
-        <p>EMA System - Human Activity Recognition © 2024</p>
+        <p>CMA-ViT - Human Activity Recognition © 2024</p>
         <p className="mt-1">
           {isConnected ? (currentScenario ? `🎬 Playing scenario: ${currentScenario}` : '🔌 Connected - Select a scenario to start') : '⚠️ Backend not connected'}
         </p>
