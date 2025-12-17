@@ -378,7 +378,7 @@ async def reload_scenarios():
 @app.post('/api/scenarios/{scenario_id}/start')
 async def start_scenario(scenario_id: str):
     """Start playing a scenario (affects websocket streams)"""
-    global CURRENT_SCENARIO, CURRENT_SCENARIO_INDEX, SCENARIO_PLAYING
+    global CURRENT_SCENARIO, CURRENT_SCENARIO_INDEX, SCENARIO_PLAYING, LAST_ACTIVITY
     print(f"Attempting to start scenario: '{scenario_id}'")
     print(f"Available scenarios: {list(SCENARIOS.keys())}")
     key = find_scenario_key(scenario_id)
@@ -387,6 +387,8 @@ async def start_scenario(scenario_id: str):
         return {"success": False, "message": "scenario not found", "available": list(SCENARIOS.keys())}
     CURRENT_SCENARIO = key
     CURRENT_SCENARIO_INDEX = 0
+    # reset last activity so first row of new scenario is logged
+    LAST_ACTIVITY = None
     SCENARIO_PLAYING = True
     return {"success": True, "scenario": CURRENT_SCENARIO, "rows": len(SCENARIOS[key])}
 
@@ -394,9 +396,10 @@ async def start_scenario(scenario_id: str):
 @app.post('/api/scenarios/stop')
 async def stop_scenario():
     """Stop scenario playback"""
-    global CURRENT_SCENARIO, SCENARIO_PLAYING
+    global CURRENT_SCENARIO, SCENARIO_PLAYING, LAST_ACTIVITY
     CURRENT_SCENARIO = None
     SCENARIO_PLAYING = False
+    LAST_ACTIVITY = None
     return {"success": True}
 
 
