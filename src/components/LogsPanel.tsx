@@ -81,6 +81,15 @@ export function LogsPanel({ logs, onAcknowledge }: LogsPanelProps) {
                   <p className="text-xs text-gray-500 mt-0.5">
                     {log.activity_label_en}
                   </p>
+                  { (log.action || log.temperature || log.step || log.calorie || log.device) && (
+                    <div className="mt-1 text-xs text-gray-500 flex flex-wrap gap-2">
+                      {log.action && <span className="px-2 py-0.5 bg-gray-100 rounded">{log.action}</span>}
+                      {typeof log.temperature !== 'undefined' && <span>🌡 {log.temperature}°C</span>}
+                      {typeof log.step !== 'undefined' && <span>👟 {log.step}</span>}
+                      {typeof log.calorie !== 'undefined' && <span>🔥 {log.calorie}</span>}
+                      {log.device && <span>📟 {log.device}</span>}
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
                     <span>{formatDate(log.timestamp)}</span>
                     <span>•</span>

@@ -91,6 +91,12 @@ export function ActivityCard({ sensorData }: ActivityCardProps) {
           <div className="text-sm font-medium text-gray-800">{sensorData.device ?? '-'}</div>
         </div>
       </div>
+        {sensorData.action && (
+          <div className="mt-3 text-sm text-gray-600">
+            <span className="text-xs text-gray-500">Action:</span>{' '}
+            <span className="font-medium text-gray-800">{sensorData.action}</span>
+          </div>
+        )}
 
       {sensorData.severity === 'critical' && (
         <div className="bg-red-100 border border-red-300 rounded-lg p-3 mt-4">

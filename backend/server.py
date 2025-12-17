@@ -346,6 +346,7 @@ async def get_sensor_data():
                 "calorie": fval('Calorie', 0),
                 "sleep_state": row.get('Sleep State') or row.get('Sleep', ''),
                 "device": row.get('Device') or '',
+                "action": (row.get('Action') or row.get('Action ') or '').strip(),
             }
             return {"sensor_data": sensor_data}
 
