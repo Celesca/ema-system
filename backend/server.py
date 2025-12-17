@@ -8,6 +8,11 @@ import random
 import json
 import csv
 import os
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except Exception:
+    PANDAS_AVAILABLE = False
 
 app = FastAPI(title="EMA System - Human Activity Recognition API")
 
@@ -82,11 +87,20 @@ SCENARIOS = {}
 CURRENT_SCENARIO = None
 CURRENT_SCENARIO_INDEX = 0
 SCENARIO_PLAYING = False
+LAST_ACTIVITY = None
 
-def load_scenarios_from_folder(folder: str = "backend/data"):
+# Get the directory where this script is located
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(SCRIPT_DIR, "data")
+
+def load_scenarios_from_folder(folder: str = None):
     global SCENARIOS
     SCENARIOS = {}
+    if folder is None:
+        folder = DATA_DIR
+    print(f"Loading scenarios from: {folder}")
     if not os.path.isdir(folder):
+        print(f"ERROR: Data folder not found: {folder}")
         return
     for fname in os.listdir(folder):
         if not fname.lower().endswith('.csv'):
@@ -95,16 +109,47 @@ def load_scenarios_from_folder(folder: str = "backend/data"):
         name = os.path.splitext(fname)[0]
         rows = []
         try:
-            with open(full, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for r in reader:
-                    rows.append(r)
+            # Prefer pandas for robust CSV parsing when available
+            if PANDAS_AVAILABLE:
+                df = pd.read_csv(full)
+                rows = df.fillna('').to_dict(orient='records')
+            else:
+                with open(full, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for r in reader:
+                        rows.append(r)
+            # store by base name and also with normalized key variants
             SCENARIOS[name] = rows
+            print(f"  Loaded scenario '{name}' with {len(rows)} rows")
         except Exception as e:
             print(f"Failed to load scenario {fname}: {e}")
 
+
+def find_scenario_key(sid: str) -> Optional[str]:
+    """Find the best matching scenario key for a given id or path."""
+    if not sid:
+        return None
+    # direct match
+    if sid in SCENARIOS:
+        return sid
+    # basename match (remove path and extension)
+    b = os.path.splitext(os.path.basename(sid))[0]
+    if b in SCENARIOS:
+        return b
+    # lower-case match
+    low = sid.lower()
+    for k in SCENARIOS.keys():
+        if k.lower() == low:
+            return k
+    # substring match
+    for k in SCENARIOS.keys():
+        if low in k.lower() or k.lower() in low:
+            return k
+    return None
+
 # load at startup
 load_scenarios_from_folder()
+print(f"Available scenarios: {list(SCENARIOS.keys())}")
 
 # Sensor data now comes only from CSV scenarios. The old random generator was removed.
 
@@ -166,6 +211,7 @@ def generate_historical_data_from_scenario(scenario_id: str) -> List[dict]:
             "calorie": fval('Calorie',0),
             "sleep_state": row.get('Sleep State') or row.get('Sleep',''),
             "device": row.get('Device') or '',
+            "action": (row.get('Action') or row.get('Action ') or '').strip(),
         })
     return mapped
 
@@ -309,19 +355,39 @@ async def get_sensor_data():
 @app.get('/api/scenarios')
 async def list_scenarios():
     """List available CSV scenarios"""
-    return {"scenarios": [{"id": k, "rows": len(v)} for k, v in SCENARIOS.items()]}
+    # return only unique base keys to avoid duplicates from normalization
+    seen = set()
+    scenarios_list = []
+    for k, v in SCENARIOS.items():
+        base = os.path.splitext(os.path.basename(k))[0]
+        if base in seen:
+            continue
+        seen.add(base)
+        scenarios_list.append({"id": base, "rows": len(v)})
+    return {"scenarios": scenarios_list}
+
+
+@app.post('/api/scenarios/reload')
+async def reload_scenarios():
+    """Reload scenarios from disk"""
+    load_scenarios_from_folder()
+    return {"success": True, "count": len(SCENARIOS)}
 
 
 @app.post('/api/scenarios/{scenario_id}/start')
 async def start_scenario(scenario_id: str):
     """Start playing a scenario (affects websocket streams)"""
     global CURRENT_SCENARIO, CURRENT_SCENARIO_INDEX, SCENARIO_PLAYING
-    if scenario_id not in SCENARIOS:
-        return {"success": False, "message": "scenario not found"}
-    CURRENT_SCENARIO = scenario_id
+    print(f"Attempting to start scenario: '{scenario_id}'")
+    print(f"Available scenarios: {list(SCENARIOS.keys())}")
+    key = find_scenario_key(scenario_id)
+    print(f"Matched key: {key}")
+    if not key:
+        return {"success": False, "message": "scenario not found", "available": list(SCENARIOS.keys())}
+    CURRENT_SCENARIO = key
     CURRENT_SCENARIO_INDEX = 0
     SCENARIO_PLAYING = True
-    return {"success": True, "scenario": scenario_id}
+    return {"success": True, "scenario": CURRENT_SCENARIO, "rows": len(SCENARIOS[key])}
 
 
 @app.post('/api/scenarios/stop')
@@ -385,6 +451,7 @@ async def get_stats():
 # WebSocket for real-time updates
 @app.websocket("/ws/realtime")
 async def websocket_endpoint(websocket: WebSocket):
+    global CURRENT_SCENARIO_INDEX, LAST_ACTIVITY
     await websocket.accept()
     connected_websockets.append(websocket)
     
@@ -461,8 +528,18 @@ async def websocket_endpoint(websocket: WebSocket):
                         "last_sync": datetime.now().isoformat(),
                     }
 
-                    # Add to logs for falling or notable events
-                    if activity == 0 or (action and 'fall' in action):
+                    # Add to logs when activity changes or critical events occur
+                    raw_action = (row.get('Action') or row.get('Action ') or '').strip()
+                    should_log = False
+                    if LAST_ACTIVITY is None:
+                        should_log = True
+                    elif activity != LAST_ACTIVITY:
+                        should_log = True
+                    # always log critical events (falls)
+                    if activity == 0:
+                        should_log = True
+
+                    if should_log:
                         new_log = {
                             "id": f"log-{len(activity_logs)}",
                             "timestamp": sensor_data["timestamp"],
@@ -472,14 +549,22 @@ async def websocket_endpoint(websocket: WebSocket):
                             "severity": ACTIVITY_SEVERITY[activity],
                             "confidence": sensor_data["confidence"],
                             "acknowledged": False,
+                            # include additional fields from CSV
+                            "action": raw_action,
+                            "temperature": sensor_data.get('temperature'),
+                            "step": sensor_data.get('step'),
+                            "calorie": sensor_data.get('calorie'),
+                            "device": sensor_data.get('device'),
                         }
                         activity_logs.insert(0, new_log)
-                        if len(activity_logs) > 100:
+                        # trim logs to reasonable size
+                        if len(activity_logs) > 200:
                             activity_logs.pop()
+                        LAST_ACTIVITY = activity
 
                     await websocket.send_json({
                         "type": "update",
-                        "sensor_data": sensor_data,
+                        "sensor_data": { **sensor_data, "action": raw_action },
                         "vitals": vitals,
                         "latest_log": activity_logs[0] if activity_logs else None,
                     })

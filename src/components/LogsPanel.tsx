@@ -46,13 +46,13 @@ export function LogsPanel({ logs, onAcknowledge }: LogsPanelProps) {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-4 md:p-6 h-full">
+    <div className="bg-white rounded-xl shadow-lg p-4 md:p-6 flex flex-col min-h-0 max-h-[60vh] md:max-h-[55vh]">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-gray-700">📋 Activity Logs</h2>
         <span className="text-xs text-gray-400">{logs.length} entries</span>
       </div>
 
-      <div className="space-y-2 max-h-80 md:max-h-96 overflow-y-auto pr-2 scrollbar-thin">
+      <div className="space-y-2 overflow-y-auto pr-2 scrollbar-thin flex-1">
         {logs.length === 0 ? (
           <div className="text-center text-gray-400 py-8">
             No activity logs yet

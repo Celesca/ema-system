@@ -73,6 +73,25 @@ export function ActivityCard({ sensorData }: ActivityCardProps) {
         </div>
       </div>
       
+      <div className="grid grid-cols-2 gap-3 mt-3">
+        <div className="space-y-2">
+          <div className="text-xs text-gray-500">Temperature</div>
+          <div className="text-sm font-medium text-gray-800">{sensorData.temperature ?? '-'} °C</div>
+        </div>
+        <div className="space-y-2">
+          <div className="text-xs text-gray-500">Step</div>
+          <div className="text-sm font-medium text-gray-800">{sensorData.step ?? '-'}</div>
+        </div>
+        <div className="space-y-2">
+          <div className="text-xs text-gray-500">Calorie</div>
+          <div className="text-sm font-medium text-gray-800">{sensorData.calorie ?? '-'}</div>
+        </div>
+        <div className="space-y-2">
+          <div className="text-xs text-gray-500">Device</div>
+          <div className="text-sm font-medium text-gray-800">{sensorData.device ?? '-'}</div>
+        </div>
+      </div>
+
       {sensorData.severity === 'critical' && (
         <div className="bg-red-100 border border-red-300 rounded-lg p-3 mt-4">
           <div className="flex items-center gap-2">
