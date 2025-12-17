@@ -20,6 +20,13 @@ export interface SensorData {
   activity_label_en: string;
   severity: 'normal' | 'warning' | 'critical';
   confidence: number;
+  // optional CSV fields
+  battery?: number;
+  temperature?: number;
+  step?: number;
+  calorie?: number;
+  sleep_state?: string;
+  device?: string;
 }
 
 // Vitals types

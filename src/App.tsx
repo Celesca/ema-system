@@ -169,6 +169,8 @@ function App() {
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [useSimulation, setUseSimulation] = useState(false);
+  const [scenarios, setScenarios] = useState<Array<{id:string; rows:number}>>([]);
+  const [currentScenario, setCurrentScenario] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const logIdCounter = useRef(100);
 
@@ -230,6 +232,37 @@ function App() {
       }
     }
   }, [useSimulation, calculateStats]);
+
+  // Load scenario list at startup
+  useEffect(() => {
+    fetch('/api/scenarios')
+      .then(r => r.json())
+      .then(data => setScenarios(data.scenarios || []))
+      .catch(() => setScenarios([]));
+  }, []);
+
+  const startScenario = async (id: string) => {
+    try {
+      // ensure we use backend stream
+      setUseSimulation(false);
+      const res = await fetch(`/api/scenarios/${encodeURIComponent(id)}/start`, { method: 'POST' });
+      const body = await res.json();
+      if (body.success) {
+        setCurrentScenario(id);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const stopScenario = async () => {
+    try {
+      await fetch('/api/scenarios/stop', { method: 'POST' });
+      setCurrentScenario(null);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Simulation mode
   useEffect(() => {
@@ -310,13 +343,34 @@ function App() {
               </div>
 
               {/* Patient Info Button */}
-              <button
-                onClick={() => setIsPatientModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-2 md:px-4 md:py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium shadow-md"
-              >
-                <span>👤</span>
-                <span className="hidden sm:inline">Patient Info</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-2">
+                  {scenarios.map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => startScenario(s.id)}
+                      className={`px-2 py-1 rounded-md text-xs ${currentScenario === s.id ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                      {s.id}
+                    </button>
+                  ))}
+                </div>
+                {currentScenario ? (
+                  <button
+                    onClick={stopScenario}
+                    className="px-3 py-2 bg-red-500 text-white rounded-lg text-sm font-medium shadow-md"
+                  >
+                    Stop Scenario
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setIsPatientModalOpen(true)}
+                    className="flex items-center gap-2 px-3 py-2 md:px-4 md:py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium shadow-md"
+                  >
+                    <span>👤</span>
+                    <span className="hidden sm:inline">Patient Info</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

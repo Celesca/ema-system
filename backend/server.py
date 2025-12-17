@@ -5,8 +5,9 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 import asyncio
 import random
-import math
 import json
+import csv
+import os
 
 app = FastAPI(title="EMA System - Human Activity Recognition API")
 
@@ -76,91 +77,36 @@ PATIENT_INFO = {
 activity_logs: List[dict] = []
 connected_websockets: List[WebSocket] = []
 
-# Sensor data generation based on activity type
-def generate_sensor_data_for_activity(activity: int) -> dict:
-    """Generate realistic sensor data based on activity type"""
-    timestamp = datetime.now().isoformat()
-    
-    # Base patterns for different activities
-    patterns = {
-        0: {  # Fall - sudden spike then stillness
-            "acc_x": random.uniform(-15, 15),
-            "acc_y": random.uniform(-20, 5),
-            "acc_z": random.uniform(-10, 15),
-            "gyro_x": random.uniform(-300, 300),
-            "gyro_y": random.uniform(-300, 300),
-            "gyro_z": random.uniform(-200, 200),
-        },
-        1: {  # Jump - vertical motion
-            "acc_x": random.uniform(-2, 2),
-            "acc_y": random.uniform(-15, 20),
-            "acc_z": random.uniform(-3, 3),
-            "gyro_x": random.uniform(-50, 50),
-            "gyro_y": random.uniform(-30, 30),
-            "gyro_z": random.uniform(-20, 20),
-        },
-        2: {  # Lying down - gradual change
-            "acc_x": random.uniform(-1, 1),
-            "acc_y": random.uniform(-2, 0),
-            "acc_z": random.uniform(8, 10),
-            "gyro_x": random.uniform(-20, 20),
-            "gyro_y": random.uniform(-30, 30),
-            "gyro_z": random.uniform(-10, 10),
-        },
-        3: {  # Running - rhythmic high amplitude
-            "acc_x": random.uniform(-5, 5) + 3 * math.sin(random.random() * 6.28),
-            "acc_y": random.uniform(-8, 8) + 5 * math.sin(random.random() * 6.28),
-            "acc_z": random.uniform(-3, 3),
-            "gyro_x": random.uniform(-100, 100),
-            "gyro_y": random.uniform(-80, 80),
-            "gyro_z": random.uniform(-60, 60),
-        },
-        4: {  # Stand to sit - downward motion
-            "acc_x": random.uniform(-1, 1),
-            "acc_y": random.uniform(-5, 0),
-            "acc_z": random.uniform(-2, 2),
-            "gyro_x": random.uniform(-40, 40),
-            "gyro_y": random.uniform(-20, 20),
-            "gyro_z": random.uniform(-15, 15),
-        },
-        5: {  # Sit to stand - upward motion
-            "acc_x": random.uniform(-1, 1),
-            "acc_y": random.uniform(0, 5),
-            "acc_z": random.uniform(-2, 2),
-            "gyro_x": random.uniform(-40, 40),
-            "gyro_y": random.uniform(-20, 20),
-            "gyro_z": random.uniform(-15, 15),
-        },
-        6: {  # Walking - rhythmic moderate amplitude
-            "acc_x": random.uniform(-2, 2) + 1.5 * math.sin(random.random() * 6.28),
-            "acc_y": random.uniform(-3, 3) + 2 * math.sin(random.random() * 6.28),
-            "acc_z": random.uniform(-1, 1),
-            "gyro_x": random.uniform(-40, 40),
-            "gyro_y": random.uniform(-30, 30),
-            "gyro_z": random.uniform(-25, 25),
-        },
-    }
-    
-    data = patterns.get(activity, patterns[6])
-    
-    return {
-        "timestamp": timestamp,
-        "accelerometer": {
-            "x": round(data["acc_x"], 3),
-            "y": round(data["acc_y"], 3),
-            "z": round(data["acc_z"], 3),
-        },
-        "gyroscope": {
-            "x": round(data["gyro_x"], 3),
-            "y": round(data["gyro_y"], 3),
-            "z": round(data["gyro_z"], 3),
-        },
-        "activity": activity,
-        "activity_label": ACTIVITY_LABELS[activity],
-        "activity_label_en": ACTIVITY_LABELS_EN[activity],
-        "severity": ACTIVITY_SEVERITY[activity],
-        "confidence": round(random.uniform(0.85, 0.99), 2),
-    }
+# Load scenario CSV files from backend/data
+SCENARIOS = {}
+CURRENT_SCENARIO = None
+CURRENT_SCENARIO_INDEX = 0
+SCENARIO_PLAYING = False
+
+def load_scenarios_from_folder(folder: str = "backend/data"):
+    global SCENARIOS
+    SCENARIOS = {}
+    if not os.path.isdir(folder):
+        return
+    for fname in os.listdir(folder):
+        if not fname.lower().endswith('.csv'):
+            continue
+        full = os.path.join(folder, fname)
+        name = os.path.splitext(fname)[0]
+        rows = []
+        try:
+            with open(full, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for r in reader:
+                    rows.append(r)
+            SCENARIOS[name] = rows
+        except Exception as e:
+            print(f"Failed to load scenario {fname}: {e}")
+
+# load at startup
+load_scenarios_from_folder()
+
+# Sensor data now comes only from CSV scenarios. The old random generator was removed.
 
 
 def generate_vitals() -> dict:
@@ -176,24 +122,52 @@ def generate_vitals() -> dict:
     }
 
 
-def generate_historical_data(hours: int = 24) -> List[dict]:
-    """Generate historical sensor data for charts"""
-    data = []
-    now = datetime.now()
-    
-    # Generate data points every 5 minutes
-    for i in range(hours * 12):
-        timestamp = now - timedelta(minutes=i * 5)
-        activity = random.choices(
-            [0, 1, 2, 3, 4, 5, 6],
-            weights=[0.02, 0.05, 0.15, 0.08, 0.15, 0.15, 0.40]  # Walking is most common
-        )[0]
-        
-        sensor_data = generate_sensor_data_for_activity(activity)
-        sensor_data["timestamp"] = timestamp.isoformat()
-        data.append(sensor_data)
-    
-    return list(reversed(data))
+def generate_historical_data_from_scenario(scenario_id: str) -> List[dict]:
+    """Return mapped historical data from a loaded CSV scenario"""
+    rows = SCENARIOS.get(scenario_id, [])
+    mapped = []
+    for row in rows:
+        def fval(key, default=0.0):
+            v = row.get(key, '')
+            try:
+                return float(v)
+            except:
+                return default
+        action = (row.get('Action') or row.get('Action ') or '').strip().lower()
+        if 'fall' in action:
+            activity = 0
+        elif 'jump' in action:
+            activity = 1
+        elif 'lie' in action or 'sleep' in action:
+            activity = 2
+        elif 'run' in action:
+            activity = 3
+        elif 'sit' in action and 'stand' not in action:
+            activity = 4
+        elif 'sit' in action and 'stand' in action:
+            activity = 5
+        elif 'walk' in action:
+            activity = 6
+        else:
+            activity = 6
+
+        mapped.append({
+            "timestamp": row.get('Timestamp') or datetime.now().isoformat(),
+            "accelerometer": {"x": round(fval('acc_x'),3), "y": round(fval('acc_y'),3), "z": round(fval('acc_z'),3)},
+            "gyroscope": {"x": round(fval('gyro_x'),3), "y": round(fval('gyro_y'),3), "z": round(fval('gyro_z'),3)},
+            "activity": activity,
+            "activity_label": ACTIVITY_LABELS[activity],
+            "activity_label_en": ACTIVITY_LABELS_EN[activity],
+            "severity": ACTIVITY_SEVERITY[activity],
+            "confidence": round(random.uniform(0.85,0.99),2),
+            "battery": fval('Battery Level',0),
+            "temperature": fval('Temperature',0),
+            "step": int(fval('Step',0)),
+            "calorie": fval('Calorie',0),
+            "sleep_state": row.get('Sleep State') or row.get('Sleep',''),
+            "device": row.get('Device') or '',
+        })
+    return mapped
 
 
 # Generate initial logs
@@ -280,17 +254,92 @@ async def get_vitals():
 @app.get("/api/sensor-data")
 async def get_sensor_data():
     """Get current sensor data"""
-    activity = random.choices(
-        [0, 1, 2, 3, 4, 5, 6],
-        weights=[0.02, 0.05, 0.15, 0.08, 0.15, 0.15, 0.40]
-    )[0]
-    return generate_sensor_data_for_activity(activity)
+    # If a scenario is playing, return the current row mapped to sensor_data
+    if SCENARIO_PLAYING and CURRENT_SCENARIO in SCENARIOS:
+        rows = SCENARIOS[CURRENT_SCENARIO]
+        if rows:
+            idx = max(0, (CURRENT_SCENARIO_INDEX - 1) % len(rows))
+            row = rows[idx]
+            def fval(key, default=0.0):
+                v = row.get(key, '')
+                try:
+                    return float(v)
+                except:
+                    return default
+
+            action = (row.get('Action') or row.get('Action ') or '').strip().lower()
+            if 'fall' in action:
+                activity = 0
+            elif 'jump' in action:
+                activity = 1
+            elif 'lie' in action or 'sleep' in action:
+                activity = 2
+            elif 'run' in action:
+                activity = 3
+            elif 'sit' in action and 'stand' not in action:
+                activity = 4
+            elif 'sit' in action and 'stand' in action:
+                activity = 5
+            elif 'walk' in action:
+                activity = 6
+            else:
+                activity = 6
+
+            sensor_data = {
+                "timestamp": row.get('Timestamp') or datetime.now().isoformat(),
+                "accelerometer": {"x": round(fval('acc_x'),3), "y": round(fval('acc_y'),3), "z": round(fval('acc_z'),3)},
+                "gyroscope": {"x": round(fval('gyro_x'),3), "y": round(fval('gyro_y'),3), "z": round(fval('gyro_z'),3)},
+                "activity": activity,
+                "activity_label": ACTIVITY_LABELS[activity],
+                "activity_label_en": ACTIVITY_LABELS_EN[activity],
+                "severity": ACTIVITY_SEVERITY[activity],
+                "confidence": round(random.uniform(0.85, 0.99), 2),
+                "battery": fval('Battery Level', 0),
+                "temperature": fval('Temperature', 0),
+                "step": int(fval('Step', 0)),
+                "calorie": fval('Calorie', 0),
+                "sleep_state": row.get('Sleep State') or row.get('Sleep', ''),
+                "device": row.get('Device') or '',
+            }
+            return {"sensor_data": sensor_data}
+
+    return {"sensor_data": None, "message": "no scenario playing"}
+
+
+@app.get('/api/scenarios')
+async def list_scenarios():
+    """List available CSV scenarios"""
+    return {"scenarios": [{"id": k, "rows": len(v)} for k, v in SCENARIOS.items()]}
+
+
+@app.post('/api/scenarios/{scenario_id}/start')
+async def start_scenario(scenario_id: str):
+    """Start playing a scenario (affects websocket streams)"""
+    global CURRENT_SCENARIO, CURRENT_SCENARIO_INDEX, SCENARIO_PLAYING
+    if scenario_id not in SCENARIOS:
+        return {"success": False, "message": "scenario not found"}
+    CURRENT_SCENARIO = scenario_id
+    CURRENT_SCENARIO_INDEX = 0
+    SCENARIO_PLAYING = True
+    return {"success": True, "scenario": scenario_id}
+
+
+@app.post('/api/scenarios/stop')
+async def stop_scenario():
+    """Stop scenario playback"""
+    global CURRENT_SCENARIO, SCENARIO_PLAYING
+    CURRENT_SCENARIO = None
+    SCENARIO_PLAYING = False
+    return {"success": True}
 
 
 @app.get("/api/sensor-data/history")
-async def get_sensor_history(hours: int = 24):
-    """Get historical sensor data"""
-    return {"data": generate_historical_data(hours)}
+async def get_sensor_history(hours: int = 24, scenario_id: Optional[str] = None):
+    """Get historical sensor data; if scenario_id provided return that scenario mapping"""
+    sid = scenario_id or CURRENT_SCENARIO
+    if sid and sid in SCENARIOS:
+        return {"data": generate_historical_data_from_scenario(sid)}
+    return {"data": []}
 
 
 @app.get("/api/logs")
@@ -342,41 +391,109 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             # Generate new sensor data
-            activity = random.choices(
-                [0, 1, 2, 3, 4, 5, 6],
-                weights=[0.01, 0.03, 0.12, 0.06, 0.18, 0.18, 0.42]
-            )[0]
-            
-            sensor_data = generate_sensor_data_for_activity(activity)
+            # If a scenario is playing use its preloaded CSV data
+            if SCENARIO_PLAYING and CURRENT_SCENARIO in SCENARIOS:
+                rows = SCENARIOS[CURRENT_SCENARIO]
+                if rows:
+                    row = rows[CURRENT_SCENARIO_INDEX % len(rows)]
+                    CURRENT_SCENARIO_INDEX += 1
+
+                    # Map CSV row to sensor_data structure
+                    def fval(key, default=0.0):
+                        v = row.get(key, '')
+                        try:
+                            return float(v)
+                        except:
+                            return default
+
+                    # Map action string to activity id
+                    action = (row.get('Action') or row.get('Action ' ) or '').strip().lower()
+                    if 'fall' in action or 'falling' in action or 'fall' == action:
+                        activity = 0
+                    elif 'jump' in action:
+                        activity = 1
+                    elif 'lie' in action or 'sleep' in action:
+                        activity = 2
+                    elif 'run' in action or 'running' in action:
+                        activity = 3
+                    elif 'sit' in action and 'stand' not in action:
+                        activity = 4
+                    elif 'sit' in action and 'stand' in action:
+                        activity = 5
+                    elif 'walk' in action:
+                        activity = 6
+                    else:
+                        activity = 6
+
+                    sensor_data = {
+                        "timestamp": row.get('Timestamp') or datetime.now().isoformat(),
+                        "accelerometer": {
+                            "x": round(fval('acc_x'), 3),
+                            "y": round(fval('acc_y'), 3),
+                            "z": round(fval('acc_z'), 3),
+                        },
+                        "gyroscope": {
+                            "x": round(fval('gyro_x'), 3),
+                            "y": round(fval('gyro_y'), 3),
+                            "z": round(fval('gyro_z'), 3),
+                        },
+                        "activity": activity,
+                        "activity_label": ACTIVITY_LABELS[activity],
+                        "activity_label_en": ACTIVITY_LABELS_EN[activity],
+                        "severity": ACTIVITY_SEVERITY[activity],
+                        "confidence": round(random.uniform(0.85, 0.99), 2),
+                        # additional fields from CSV
+                        "battery": fval('Battery Level', 0),
+                        "temperature": fval('Temperature', 0),
+                        "step": int(fval('Step', 0)),
+                        "calorie": fval('Calorie', 0),
+                        "sleep_state": row.get('Sleep State') or row.get('Sleep', ''),
+                        "device": row.get('Device') or '',
+                    }
+
+                    vitals = {
+                        "heart_rate": random.randint(60, 95) if activity in (6,3) else random.randint(55,85),
+                        "heart_rate_status": "normal",
+                        "battery": int(round(sensor_data.get('battery', 75))),
+                        "battery_status": "normal",
+                        "signal_strength": random.randint(70, 100),
+                        "device_status": "connected",
+                        "last_sync": datetime.now().isoformat(),
+                    }
+
+                    # Add to logs for falling or notable events
+                    if activity == 0 or (action and 'fall' in action):
+                        new_log = {
+                            "id": f"log-{len(activity_logs)}",
+                            "timestamp": sensor_data["timestamp"],
+                            "activity": activity,
+                            "activity_label": ACTIVITY_LABELS[activity],
+                            "activity_label_en": ACTIVITY_LABELS_EN[activity],
+                            "severity": ACTIVITY_SEVERITY[activity],
+                            "confidence": sensor_data["confidence"],
+                            "acknowledged": False,
+                        }
+                        activity_logs.insert(0, new_log)
+                        if len(activity_logs) > 100:
+                            activity_logs.pop()
+
+                    await websocket.send_json({
+                        "type": "update",
+                        "sensor_data": sensor_data,
+                        "vitals": vitals,
+                        "latest_log": activity_logs[0] if activity_logs else None,
+                    })
+                    await asyncio.sleep(1)
+                    continue
+
+            # No scenario playing: send vitals heartbeat and no sensor data
             vitals = generate_vitals()
-            
-            # Add to logs occasionally
-            if random.random() < 0.3:  # 30% chance to log
-                new_log = {
-                    "id": f"log-{len(activity_logs)}",
-                    "timestamp": sensor_data["timestamp"],
-                    "activity": activity,
-                    "activity_label": ACTIVITY_LABELS[activity],
-                    "activity_label_en": ACTIVITY_LABELS_EN[activity],
-                    "severity": ACTIVITY_SEVERITY[activity],
-                    "confidence": sensor_data["confidence"],
-                    "acknowledged": False,
-                }
-                activity_logs.insert(0, new_log)
-                
-                # Keep only last 100 logs
-                if len(activity_logs) > 100:
-                    activity_logs.pop()
-            
-            # Send data to client
             await websocket.send_json({
                 "type": "update",
-                "sensor_data": sensor_data,
+                "sensor_data": None,
                 "vitals": vitals,
                 "latest_log": activity_logs[0] if activity_logs else None,
             })
-            
-            # Wait before next update (simulate real-time)
             await asyncio.sleep(1)
             
     except WebSocketDisconnect:
