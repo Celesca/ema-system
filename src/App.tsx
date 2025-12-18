@@ -95,7 +95,7 @@ function App() {
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [isSummarizeOpen, setIsSummarizeOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [scenarios, setScenarios] = useState<Array<{id:string; rows:number}>>([]);
+  const [, setScenarios] = useState<Array<{id:string; rows:number}>>([]);
   const [currentScenario, setCurrentScenario] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
