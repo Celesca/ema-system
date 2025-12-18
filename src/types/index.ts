@@ -20,6 +20,14 @@ export interface SensorData {
   activity_label_en: string;
   severity: 'normal' | 'warning' | 'critical';
   confidence: number;
+  // optional CSV fields
+  battery?: number;
+  temperature?: number;
+  step?: number;
+  calorie?: number;
+  action?: string;
+  sleep_state?: string;
+  device?: string;
 }
 
 // Vitals types
@@ -51,6 +59,12 @@ export interface ActivityLog {
   severity: 'normal' | 'warning' | 'critical';
   confidence: number;
   acknowledged: boolean;
+  // optional extra fields
+  action?: string;
+  temperature?: number;
+  step?: number;
+  calorie?: number;
+  device?: string;
 }
 
 // Patient types
@@ -88,6 +102,7 @@ export interface Stats {
   activity_breakdown: ActivityStat[];
   critical_events: number;
   warnings: number;
+  action_breakdown?: { action: string; count: number; percentage: number }[];
 }
 
 // WebSocket message type

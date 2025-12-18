@@ -45,6 +45,21 @@ export function StatsCard({ stats }: StatsCardProps) {
         </div>
       </div>
 
+      {/* Action Breakdown (if available) */}
+      {stats.action_breakdown && stats.action_breakdown.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-sm font-medium text-gray-600 mb-2">Action Breakdown</h3>
+          <div className="space-y-2">
+            {stats.action_breakdown.map((a) => (
+              <div key={a.action} className="flex items-center justify-between text-xs text-gray-600">
+                <div className="truncate mr-2">{a.action}</div>
+                <div className="text-gray-500">{a.count} ({a.percentage}%)</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Activity Breakdown */}
       <div className="space-y-2">
         {stats.activity_breakdown.map((stat) => (
