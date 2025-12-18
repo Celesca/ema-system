@@ -104,7 +104,7 @@ function App() {
   const scenarioMapping: Record<string, string> = {
     "Scenario 1": "elder_normal_scenario_60rows",
     "Scenario 2": "elder_sleeping_scenario_60rows",
-    "Scenario 3": "elder_walk_run_fall_60rows"
+    "Scenario 3": "elder_walk_run_fall_20rows",
   };
 
   // Wrap the pure stats function so we can pass it around as before
@@ -252,8 +252,8 @@ function App() {
             <div className="flex items-center gap-2 md:gap-4">
               {/* Connection Status */}
               <div className={`flex items-center gap-1.5 px-2 py-1 md:px-3 md:py-1.5 rounded-full text-xs font-medium ${isConnected
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-red-100 text-red-700'
+                ? 'bg-green-100 text-green-700'
+                : 'bg-red-100 text-red-700'
                 }`}>
                 <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
                   }`}></span>
