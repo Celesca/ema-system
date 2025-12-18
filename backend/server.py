@@ -14,6 +14,21 @@ try:
 except Exception:
     PANDAS_AVAILABLE = False
 
+from dotenv import load_dotenv
+from linebot import LineBotApi
+from linebot.v3.webhook import WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
+
+# Load environment variables
+load_dotenv()
+
+LINE_ACCESS_TOKEN = os.getenv("Line_access_token")
+LINE_SECRET = os.getenv("Line_secret")
+
+line_bot_api = LineBotApi(LINE_ACCESS_TOKEN) if LINE_ACCESS_TOKEN else None
+handler = WebhookHandler(LINE_SECRET) if LINE_SECRET else None
+
 app = FastAPI(title="EMA System - Human Activity Recognition API")
 
 # Enable CORS
@@ -268,10 +283,31 @@ class VitalsData(BaseModel):
     last_sync: str
 
 
+class NotificationRequest(BaseModel):
+    message: str
+    severity: str
+
+
 # API Endpoints
 @app.get("/")
 async def root():
     return {"message": "EMA System - Human Activity Recognition API", "version": "1.0.0"}
+
+
+@app.post("/api/notify-fall")
+async def notify_fall(request: NotificationRequest):
+    """Send a notification via Line Messaging API"""
+    if not line_bot_api:
+        return {"success": False, "message": "Line API not configured"}
+    
+    try:
+        # Broadcast to all users who have added the bot
+        line_bot_api.broadcast(TextSendMessage(text=request.message))
+        print(f"Line notification sent: {request.message}")
+        return {"success": True}
+    except Exception as e:
+        print(f"Error sending Line notification: {e}")
+        return {"success": False, "message": str(e)}
 
 
 @app.get("/api/patient")
