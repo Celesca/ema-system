@@ -90,20 +90,21 @@ function App() {
   const [sensorHistory, setSensorHistory] = useState<SensorData[]>(INITIAL_HISTORY);
   const [vitals, setVitals] = useState<VitalsData | null>(INITIAL_VITALS);
   const [logs, setLogs] = useState<ActivityLog[]>(INITIAL_LOGS);
-  const [patient, ] = useState<PatientInfo | null>(INITIAL_PATIENT);
+  const [patient,] = useState<PatientInfo | null>(INITIAL_PATIENT);
   const [stats, setStats] = useState<Stats | null>(() => computeStats(INITIAL_LOGS));
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [isSummarizeOpen, setIsSummarizeOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [, setScenarios] = useState<Array<{id:string; rows:number}>>([]);
+  const [, setScenarios] = useState<Array<{ id: string; rows: number }>>([]);
   const [currentScenario, setCurrentScenario] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const lastNotificationTimeRef = useRef<number>(0);
 
   // Scenario mapping for buttons
   const scenarioMapping: Record<string, string> = {
     "Scenario 1": "elder_normal_scenario_60rows",
-    "Scenario 2": "elder_sleeping_scenario_60rows", 
-    "Scenario 3": "elder_walk_run_fall_60rows"
+    "Scenario 2": "elder_sleeping_scenario_60rows",
+    "Scenario 3": "elder_walk_run_fall_20rows",
   };
 
   // Wrap the pure stats function so we can pass it around as before
@@ -114,7 +115,7 @@ function App() {
   // Connect to WebSocket for real-time backend updates
   useEffect(() => {
     const ws = new WebSocket('ws://localhost:8000/ws/realtime');
-    
+
     ws.onopen = () => {
       setIsConnected(true);
       console.log('Connected to WebSocket');
@@ -128,11 +129,33 @@ function App() {
         if (data.sensor_data) {
           setSensorData(data.sensor_data);
           setSensorHistory(prev => [...prev.slice(-49), data.sensor_data]);
+
+          // Trigger Line notification for critical events (falls)
+          if (data.sensor_data.severity === 'critical') {
+            const now = Date.now();
+            // Prevent spamming - only one notification every 30 seconds
+            if (now - lastNotificationTimeRef.current > 30000) {
+              lastNotificationTimeRef.current = now;
+              const message = `🚨 CRITICAL ALERT: Fall Detected!\nPatient: Somchai Jaidee\nRoom: ICU-302\nTime: ${new Date(data.sensor_data.timestamp).toLocaleString()}`;
+
+              fetch('http://localhost:8000/api/notify-fall', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  message,
+                  severity: 'critical'
+                })
+              })
+                .then(res => res.json())
+                .then(result => console.log('Notification sent:', result))
+                .catch(err => console.error('Error sending notification:', err));
+            }
+          }
         }
         if (data.vitals) {
           setVitals(data.vitals);
         }
-        
+
         if (data.latest_log) {
           setLogs(prev => {
             const exists = prev.find(l => l.id === data.latest_log.id);
@@ -199,8 +222,8 @@ function App() {
 
   // Acknowledge log
   const handleAcknowledge = useCallback((logId: string) => {
-    setLogs(prev => 
-      prev.map(log => 
+    setLogs(prev =>
+      prev.map(log =>
         log.id === logId ? { ...log, acknowledged: true } : log
       )
     );
@@ -225,17 +248,15 @@ function App() {
                 </p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-2 md:gap-4">
               {/* Connection Status */}
-              <div className={`flex items-center gap-1.5 px-2 py-1 md:px-3 md:py-1.5 rounded-full text-xs font-medium ${
-                isConnected 
-                  ? 'bg-green-100 text-green-700' 
-                  : 'bg-red-100 text-red-700'
-              }`}>
-                <span className={`w-2 h-2 rounded-full ${
-                  isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
-                }`}></span>
+              <div className={`flex items-center gap-1.5 px-2 py-1 md:px-3 md:py-1.5 rounded-full text-xs font-medium ${isConnected
+                ? 'bg-green-100 text-green-700'
+                : 'bg-red-100 text-red-700'
+                }`}>
+                <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+                  }`}></span>
                 <span className="hidden sm:inline">
                   {isConnected ? (currentScenario ? `Playing: ${currentScenario}` : 'Connected') : 'Disconnected'}
                 </span>
