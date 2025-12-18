@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from linebot import LineBotApi
 from linebot.v3.webhook import WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, FlexSendMessage
 
 # Load environment variables
 load_dotenv()
@@ -296,17 +296,118 @@ async def root():
 
 @app.post("/api/notify-fall")
 async def notify_fall(request: NotificationRequest):
-    """Send a notification via Line Messaging API"""
+    """Send a notification via Line Messaging API using Flex Message"""
     if not line_bot_api:
         return {"success": False, "message": "Line API not configured"}
     
     try:
-        # Broadcast to all users who have added the bot
-        line_bot_api.broadcast(TextSendMessage(text=request.message))
-        print(f"Line notification sent: {request.message}")
+        # Construct Flex Message
+        flex_contents = {
+            "type": "bubble",
+            "styles": {
+                "header": {"backgroundColor": "#ff4d4f"}
+            },
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "CRITICAL ALERT",
+                        "weight": "bold",
+                        "color": "#ffffff",
+                        "size": "lg"
+                    }
+                ]
+            },
+            "hero": {
+                "type": "image",
+                "url": "https://img.icons8.com/color/144/warning-shield.png",
+                "size": "full",
+                "aspectRatio": "20:13",
+                "aspectMode": "fit"
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "Fall Detected!",
+                        "weight": "bold",
+                        "size": "xl",
+                        "color": "#1f1f1f"
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "margin": "lg",
+                        "spacing": "sm",
+                        "contents": [
+                            {
+                                "type": "box",
+                                "layout": "baseline",
+                                "spacing": "sm",
+                                "contents": [
+                                    {"type": "text", "text": "Patient", "color": "#aaaaaa", "size": "sm", "flex": 2},
+                                    {"type": "text", "text": "Somchai Jaidee", "wrap": True, "color": "#666666", "size": "sm", "flex": 5}
+                                ]
+                            },
+                            {
+                                "type": "box",
+                                "layout": "baseline",
+                                "spacing": "sm",
+                                "contents": [
+                                    {"type": "text", "text": "Room", "color": "#aaaaaa", "size": "sm", "flex": 2},
+                                    {"type": "text", "text": "ICU-302", "wrap": True, "color": "#666666", "size": "sm", "flex": 5}
+                                ]
+                            },
+                            {
+                                "type": "box",
+                                "layout": "baseline",
+                                "spacing": "sm",
+                                "contents": [
+                                    {"type": "text", "text": "Activity", "color": "#aaaaaa", "size": "sm", "flex": 2},
+                                    {"type": "text", "text": "Falling", "wrap": True, "color": "#ff4d4f", "size": "sm", "flex": 5, "weight": "bold"}
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    {
+                        "type": "button",
+                        "style": "primary",
+                        "height": "sm",
+                        "color": "#1890ff",
+                        "action": {
+                            "type": "uri",
+                            "label": "VIEW DASHBOARD",
+                            "uri": "https://example.com"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": f"Detected at {datetime.now().strftime('%H:%M:%S')}",
+                        "size": "xs",
+                        "color": "#aaaaaa",
+                        "align": "center"
+                    }
+                ]
+            }
+        }
+
+        # Broadcast Flex Message
+        line_bot_api.broadcast(FlexSendMessage(alt_text="🚨 Fall Detected!", contents=flex_contents))
+        print(f"Line Flex notification sent: {request.message}")
         return {"success": True}
     except Exception as e:
-        print(f"Error sending Line notification: {e}")
+        print(f"Error sending Line Flex notification: {e}")
         return {"success": False, "message": str(e)}
 
 
